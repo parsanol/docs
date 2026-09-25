@@ -1,0 +1,166 @@
+= PN 2: The PG artifact format
+:docnumber: 2
+:edition: 1
+:revdate: 2026-09-25
+:copyright-year: 2026
+:language: en
+:title: The PG artifact format
+:doctype: standard
+:status: published
+:mn-document-class: ribose
+:mn-output-extensions: xml,html,pdf,rxl
+:local-cache-only:
+
+.Foreword
+This document is part of the Parsanol specifications series that defines
+the requirements for grammar authoring, artifact interchange, and model
+integration across the Parsanol parsing stack.
+
+== Introduction
+
+PG sources (PN 1) compile to an *artifact*: a JSON envelope that carries
+the portable grammar, the capture bindings, the preprocessing steps, the
+table manifest, the lint report, and the original PG source, bound
+together by a canonical checksum. The artifact is the ONLY parsing
+input for consumers: they never re-transcribe rules.
+
+The grammar section of the artifact is the portable Grammar JSON that
+the native engines — parsanol-rs, the Ruby native extension, and wasm —
+register. Text is the contract; JSON is its compiled form; the checksum
+binds them.
+
+=== Conformance
+
+A conforming artifact consumer SHALL:
+
+* verify the checksum at load time and fail loudly on mismatch, without
+  silent fallback;
+* treat the artifact as immutable data;
+* resolve referenced tables relative to the artifact's directory.
+
+A conforming artifact producer SHALL:
+
+* emit the canonical checksum specified in <<checksum>>;
+* embed the original PG source, making the artifact self-contained;
+* ship every referenced table with the artifact.
+
+== Envelope
+
+[source,json]
+----
+{
+  "version": "1.2.0",
+  "grammar": "Demo",
+  "shape": "parsanol-tree/v2",
+  "binding_version": 1,
+  "entries": {
+    "identifier": {
+      "root": "iso_identifier",
+      "grammar": { "atoms": ["..."], "root": 0 },
+      "bindings": [
+        { "capture": "year", "path": "year", "type": "integer",
+          "card": "0..1", "preprocess": null }
+      ]
+    }
+  },
+  "preprocess": {
+    "stage_code": [ { "op": "table_lookup", "table": "stages",
+                      "from": "abbr", "to": "code" } ]
+  },
+  "tables": { "stages": "stages.yaml" },
+  "lint": { "order_warnings": ["..."] },
+  "source": "...the original .pg text...",
+  "checksum": "sha256:..."
+}
+----
+
+[cols="1,3"]
+|===
+| Field | Meaning
+
+| `version`
+| grammar version from the PG header
+
+| `grammar`
+| grammar name from the PG header
+
+| `shape`
+| the parsanol-shape contract the artifact was compiled against
+
+| `binding_version`
+| independent version for model-side binding changes
+
+| `entries`
+| entry name → root rule, portable grammar, bindings
+
+| `preprocess`
+| named declarative steps (PN 1)
+
+| `tables`
+| table name → file name, resolved relative to the artifact
+
+| `lint`
+| recorded order-dependence warnings (PN 1)
+
+| `source`
+| the original `.pg` text
+
+| `checksum`
+| canonical sha256 over the envelope excluding the field itself
+|===
+
+== Canonical checksum [[checksum]]
+
+The checksum is computed over the *canonical JSON* of the envelope with
+the `checksum` field removed. Canonical JSON is:
+
+* object keys sorted lexicographically;
+* no insignificant whitespace;
+* string escaping with short escapes for backslash, quote, backspace,
+  form feed, newline, carriage return and tab, lowercase four-digit
+  `\u00xx` escapes for other control characters, and raw UTF-8
+  otherwise;
+* integers in decimal notation;
+* floats are not canonicalizable across languages and SHALL NOT appear
+  in an envelope.
+
+The canonical form is defined once, by this document. The Ruby compiler
+and the Rust loader (`parsanol::pg`) both implement it, and their byte
+agreement is pinned by cross-language tests on a shared fixture.
+
+== Parsing with an artifact
+
+Artifacts are consumed natively by every backend:
+
+* *parsanol-rs* — `parsanol::pg::PgArtifact` verifies the checksum and
+  extracts the portable `Grammar` of any entry for the walker, VM or
+  wasm.
+* *parsanol-ruby* — `Parsanol::PG::Artifact#parse` is native-first: the
+  envelope's grammar JSON is registered with the Rust engine directly,
+  with no Ruby recompilation. The Ruby atom runtime remains available as
+  `mode: :ruby` and as the fallback on platforms without the native
+  extension; the two paths are held to parity by specification tests.
+
+Bindings and preprocessing are applied to the parsanol-shape parse
+tree: capture collection, preprocessing steps, type cast, path
+assignment (PN 1).
+
+== Versioning policy
+
+* Capture renames or removals: major version.
+* New alternatives: minor version.
+* Literal fixes: patch version.
+* `version` and `binding_version` move independently: model-side-only
+  changes bump `binding_version` while the grammar checksum stays
+  untouched.
+
+A release ships the artifact, its tables, and the schema-consistent
+model versions together (PN 4); one release PR bumps all of them or CI
+fails.
+
+== Relationship to other specifications
+
+* The source language is specified in PN 1.
+* Foreign-grammar import produces PG sources, which then compile to
+  artifacts per this document (PN 3).
+* The model-side binding of artifacts is specified in PN 4.

@@ -1,0 +1,68 @@
+= Parsanol specifications
+
+image:https://github.com/parsanol/docs/workflows/generate/badge.svg["Build Status", link="https://github.com/parsanol/docs/actions?query=workflow%3Agenerate"]
+
+This document is available in its rendered forms here:
+
+* https://parsanol.github.io/docs/[Parsanol specifications]
+
+== Introduction
+
+This repository contains the official specifications for the Parsanol
+framework: a high-performance PEG (parsing expression grammar) parsing
+stack with one grammar source language, one compiled artifact format, and
+language runtimes for Ruby, Rust, WebAssembly, and — through
+https://github.com/lutaml/lutaml-model[lutaml-model] — schema-driven
+information models.
+
+== Documents
+
+PN 1:: PG — The Parsanol grammar language
+PN 2:: The PG artifact format
+PN 3:: PG foreign-grammar import (ABNF, ISO EBNF, pest)
+PN 4:: PG integration with lutaml-model
+
+== Document structure
+
+`sources/`:: source files for the Parsanol specifications, in Metanorma
+format.
+
+`1.adoc`::: PG — The Parsanol grammar language
+`2.adoc`::: The PG artifact format
+`3.adoc`::: Foreign-grammar import
+`4.adoc`::: lutaml-model integration
+
+`_site/`:: generated documentation in multiple formats (HTML, PDF, XML).
+
+== Related repositories
+
+* https://github.com/parsanol/parsanol-rs[parsanol-rs] — the Rust engine
+  (walker, bytecode VM, wasm) and PG artifact consumer
+* https://github.com/parsanol/parsanol-ruby[parsanol-ruby] — the Ruby gem:
+  the PG compiler, artifact tooling, and native bindings over parsanol-rs
+* https://github.com/pubid/pubid-grammar[pubid-grammar] — the reference
+  application of PG: language-independent grammars, artifacts, corpora and
+  binding specs
+
+== Building the documentation
+
+This repository uses Metanorma to build standardized documentation.
+
+=== Installing build tools
+
+See https://www.metanorma.org/install/[the Metanorma installation guide].
+
+=== Building locally
+
+[source,console]
+----
+bundle install
+metanorma site generate --agree-to-terms
+----
+
+== Contributing
+
+Issues and pull requests are welcome. Specification changes follow the
+same review discipline as engine changes: the normative statements in
+these documents are the contract that parsanol-rs, parsanol-ruby, and the
+PG tooling are tested against.

@@ -1,0 +1,246 @@
+= PN 1: PG — The Parsanol grammar language
+:docnumber: 1
+:edition: 1
+:revdate: 2026-09-25
+:copyright-year: 2026
+:language: en
+:title: The Parsanol grammar language
+:doctype: standard
+:status: published
+:mn-document-class: ribose
+:mn-output-extensions: xml,html,pdf,rxl
+:local-cache-only:
+
+.Foreword
+This document is part of the Parsanol specifications series that defines
+the requirements for grammar authoring, artifact interchange, and
+model integration across the Parsanol parsing stack.
+
+== Introduction
+
+PG is a text language for writing parsanol grammars. A `.pg` file is the
+single source of truth for a grammar: it compiles to a checksummed
+artifact (PN 2) whose grammar section is the same portable JSON that the
+native engines — parsanol-rs, the Ruby native extension, and wasm —
+register. Humans review the text; machines consume the JSON; the
+checksum binds them.
+
+[source]
+----
+grammar.flavor.pg  --compile-->  artifact.json (grammar + bindings +
+    ^                             preprocess + tables + sha256)
+    |                                    |
+    +-- the committed contract           +-- parsanol-rs / ruby / wasm
+----
+
+The design has one rule: a grammar or binding change is one edit in one
+file, and every language runtime inherits it, proven by the artifact
+checksum and the conformance corpus.
+
+=== Conformance
+
+A conforming PG implementation SHALL:
+
+* implement the lexical rules and operators specified in this document;
+* apply PEG semantics — ordered choice, greedy repetition — without
+  ambiguity;
+* reject left-recursive grammars at compile time;
+* reject shadowed alternatives in the classes specified in <<lint>>;
+* expand `alt from_table` alternatives deterministically, longest-first.
+
+== Lexical elements
+
+* The number sign (`#`) starts a comment that runs to the end of the
+  line.
+* Identifiers match `[A-Za-z_][A-Za-z0-9_]*`. Rule names are
+  case-sensitive.
+* Each rule occupies one line: a rule body ends at the newline.
+  Sections (`grammar`, `entry`, `bindings`, `preprocess`) are
+  line-oriented throughout.
+* The keywords `grammar`, `version`, `as`, `alt`, `from_table`,
+  `column`, `bindings`, `preprocess`, `entry`, `table_lookup` cannot
+  name or reference rules.
+
+== Terminals
+
+[cols="1,2"]
+|===
+| Form | Meaning
+
+| `"abc"`
+| exact literal (case-sensitive)
+
+| `%i"abc"`
+| case-insensitive literal
+
+| `%s"abc"`
+| exact literal (spelling provided for imports; identical to `"..."`)
+
+| `%x41`
+| one byte 0x41
+
+| `%x41-5A`
+| one byte in the range 0x41–0x5A
+
+| `%x0D.0A`
+| a sequence of bytes: 0x0D then 0x0A
+|===
+
+String escapes are `\"`, `\\`, `\n`, `\t`, `\r`.
+
+== Operators
+
+[cols="1,2,2"]
+|===
+| Form | Meaning | Compiles to
+
+| juxtaposition
+| sequence
+| `Sequence`
+
+| `a / b`
+| *ordered* choice: first match wins
+| `Alternative`
+
+| `[ x ]`
+| optional (maybe)
+| `Repetition(0,1,:maybe)`
+
+| `( x )`
+| grouping
+| —
+
+| `*x`
+| zero or more
+| `Repetition(0, ∞)`
+
+| `1*x`
+| one or more
+| `Repetition(1, ∞)`
+
+| `2*4x`
+| two to four
+| `Repetition(2, 4)`
+
+| `4x`
+| exactly four
+| `Repetition(4, 4)`
+
+| `!x`
+| negative lookahead
+| `Lookahead(false)`
+
+| `&x`
+| positive lookahead
+| `Lookahead(true)`
+
+| `x as name`
+| capture: names the parse result
+| `Named(name)`
+|===
+
+A repetition prefix binds one primary: composite operands are
+parenthesized, as in `3*(a b)`. A capture binds the primary it follows:
+`dash number as part` captures `number` only.
+
+== Data-driven alternatives
+
+[source]
+----
+stage_abbr = alt from_table "stages" column "abbr"
+----
+
+The `alt from_table` form expands at compile time into literal
+alternatives built from the named table (PN 2, <<tables>>), sorted
+longest-first. The same Tier-2 data serves the grammar, the model's enum
+payloads, and preprocessing.
+
+== Sections
+
+=== `grammar`
+
+[source]
+----
+grammar NAME version "X.Y.Z" {
+  rule = expression
+}
+----
+
+One `grammar` block per file. The version becomes the artifact's
+`version` field (PN 2).
+
+=== `entry`
+
+[source]
+----
+entry NAME: rule
+----
+
+Declares an artifact entry point. Multiple entries share the rule set.
+
+=== `bindings`
+
+[source]
+----
+bindings iso_identifier {
+  publisher -> publisher (string)
+  year -> year (integer, 0..1)
+  stage -> stage (string) preprocess: stage_code
+  supplement_no -> supplements[].number (integer, 0..*)
+}
+----
+
+A binding is `capture -> field (type [, cardinality]) [preprocess: step]`.
+
+Types are `string`, `integer`, `float`, `boolean`; unknown types pass
+through unchanged (for example, enum keys). Cardinalities are `1`,
+`0..1`, `1..*`, `0..*`. Paths containing `[]` group captures into arrays
+of objects; exactly one such level is supported — deeper nesting is
+application code above the binding layer.
+
+=== `preprocess`
+
+[source]
+----
+preprocess stage_code {
+  table_lookup stages abbr -> code
+}
+----
+
+Steps are declarative data operations. This edition defines
+`table_lookup`, which maps a value through a table column pair. Values
+that are not expressible as declarative steps are application logic and
+belong above the binding layer.
+
+== Semantics
+
+PG has PEG semantics: ordered choice, greedy repetition, no ambiguity.
+There is no global ambiguity to report because first match wins — which
+is why the compile-time lint of <<lint>> exists.
+
+Left recursion — direct or indirect, in leftmost position — SHALL be
+rejected at compile time: an unguarded left-recursive PEG loops forever
+in every engine, so PG refuses to emit such an artifact.
+
+== Compile-time lint [[lint]]
+
+Readers of ABNF and EBNF assume alternatives are interchangeable. Under
+PEG semantics order is decisive, so the compiler runs a first-set
+analysis on every alternative:
+
+* *ERROR — shadowed*: an earlier literal branch is a prefix of a later
+  one (`"iso" / "iso/iec"`). Reorder longest-first. This is the classic
+  silent-failure class of PEGs, made a build failure.
+* *ERROR — empty shadowing*: a non-final branch can match empty input.
+* *ERROR — duplicate* branches.
+* *ERROR — left recursion* (see <<Semantics>>).
+* *WARNING — order-dependent*: branches share first bytes. The warning
+  is recorded in the artifact (`lint.order_warnings`) so that consumer
+  CI can review it.
+
+== Relationship to other specifications
+
+* The compiled output of PG is specified in PN 2.
+* Import of ABNF, ISO EBNF and pest grammars into PG is specified in
+  PN 3.
+* Integration with lutaml-model information models is specified in PN 4.

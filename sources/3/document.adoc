@@ -1,0 +1,169 @@
+= PN 3: PG foreign-grammar import (ABNF, ISO EBNF, pest)
+:docnumber: 3
+:edition: 1
+:revdate: 2026-09-25
+:copyright-year: 2026
+:language: en
+:title: PG foreign-grammar import
+:doctype: standard
+:status: published
+:mn-document-class: ribose
+:mn-output-extensions: xml,html,pdf,rxl
+:local-cache-only:
+
+.Foreword
+This document is part of the Parsanol specifications series that defines
+the requirements for grammar authoring, artifact interchange, and model
+integration across the Parsanol parsing stack.
+
+== Introduction
+
+PG (PN 1) is the single source of truth for parsanol grammars. To make
+adoption of existing grammars mechanical, this document specifies
+importers that convert grammars written in ABNF (RFC 5234 with the RFC
+7405 case prefixes), EBNF (ISO 14977), and pest (the Rust PEG DSL) into
+PG source text.
+
+The import pipeline has one non-negotiable property: **the emitted PG
+text is the deliverable.** It is committed to the adopting repository
+and thereafter compiled like any hand-written grammar (PN 2). Importers
+are migration tools, not a parallel grammar path; the single-source
+property survives the migration.
+
+An importer SHALL self-check its output: the emitted PG text must
+re-parse under the PG grammar before the import succeeds.
+
+== Semantic conversion principles
+
+Each importer documents every semantic conversion it performs in the
+emitted header. Conversions fall into three classes:
+
+. *Faithful*: the foreign construct has an exact PG counterpart.
+. *Approximate*: PG expresses the same intent with a stated
+  approximation; each occurrence is noted in the emitted header.
+. *Rejected*: the construct has no honest PG counterpart; the import
+  fails with an explanatory error rather than producing a silently
+  different grammar.
+
+== ABNF (RFC 5234, RFC 7405)
+
+[cols="2,2,1"]
+|===
+| ABNF | PG | Class
+
+| bare `"abc"` — case-insensitive by specification
+| `%i"abc"`
+| faithful, and the most dangerous one: forgetting it changes the
+  language
+
+| `%s"abc"` (case-sensitive)
+| `"abc"`
+| faithful
+
+| `%x41-5A`, `%x0D.0A`, `%d13`, `%b1010`
+| `%x41-5A`, `%x0D %x0A`, `%x0d`, `%x0a`
+| faithful
+
+| `n*m`, `*x`, `3x`, `[x]`, `(...)`, `/`
+| same shapes
+| faithful
+
+| `rule =/ alt` (incremental alternatives)
+| merged into one alternative
+| faithful
+
+| rule names (case-insensitive, `-`)
+| lowercased, `-` → `_`
+| faithful
+
+| RFC 5234 core rules (ALPHA, DIGIT, …)
+| emitted as a preamble unless locally defined
+| faithful
+
+| `<prose-vals>`
+| import fails
+| rejected: not machine-parseable
+|===
+
+*The one deep semantic difference:* ABNF alternation is unordered; PG's
+is ordered. The compile-time lint (PN 1) flags every order-dependent
+branch the import produces, so mechanical transliterations become
+reviewable instead of silently different.
+
+== EBNF (ISO 14977)
+
+[cols="2,2,1"]
+|===
+| ISO EBNF | PG | Class
+
+| `"…"`, `'…'` terminals
+| exact strings
+| faithful
+
+| `,` sequence; `\|` alternation
+| juxtaposition; `/`
+| faithful
+
+| `[x]` optional; `{x}` zero-or-more
+| `[ x ]`; `*( x )`
+| faithful
+
+| meta-identifiers (case-insensitive)
+| downcased
+| faithful
+
+| `term - exception` (syntactic exception)
+| `!( exception ) term`, each occurrence noted
+| approximate: exact whenever the exception matches a prefix of the
+  term's match
+
+| `? special sequences ?`
+| import fails
+| rejected
+|===
+
+== pest (Rust PEG)
+
+[cols="2,2,1"]
+|===
+| pest | PG | Class
+
+| `\|`, `!`, `&`, `*`, `+`, `?`
+| direct (`*x`, `1*x`, `[ x ]`)
+| faithful
+
+| `"lit"`; `^"lit"`
+| `"lit"`; `%i"lit"`
+| faithful
+
+| `'a'..'z'`
+| `%x61-7a`
+| faithful
+
+| builtin classes (`ASCII_DIGIT`, `ASCII_ALPHA`, `ANY`, …)
+| `%x` ranges
+| faithful
+
+| `~`
+| sequence, plus a header note
+| approximate: pest inserts implicit WHITESPACE at `~`; PG does not —
+  whitespace must be made explicit
+
+| `_{ }`, `@{ }`, `${ }` modifiers; `name_` silent rules
+| accepted, noted; captures stay enabled
+| approximate
+
+| `PUSH`, `POP`, `PEEK`, `EOI`, `SOI`
+| import fails
+| rejected
+
+| `WHITESPACE`, `Comment` implicit rules
+| import fails
+| rejected: pest applies them implicitly; PG whitespace is explicit
+|===
+
+== Relationship to other specifications
+
+* The target language is specified in PN 1; the compiled output in PN 2.
+* Importers are implemented in the parsanol-ruby PG tooling
+  (`Parsanol::PG::Import`).

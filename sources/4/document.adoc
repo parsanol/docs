@@ -1,0 +1,112 @@
+= PN 4: PG integration with lutaml-model
+:docnumber: 4
+:edition: 1
+:revdate: 2026-09-25
+:copyright-year: 2026
+:language: en
+:title: PG integration with lutaml-model
+:doctype: standard
+:status: published
+:mn-document-class: ribose
+:mn-output-extensions: xml,html,pdf,rxl
+:local-cache-only:
+
+.Foreword
+This document is part of the Parsanol specifications series that defines
+the requirements for grammar authoring, artifact interchange, and model
+integration across the Parsanol parsing stack.
+
+== Introduction
+
+lutaml-model defines two layers for a domain: the *information model*
+(classes, attributes, types) and its *serialization models* — mappings
+to YAML, JSON, and XML. This document specifies the third serialization
+path: *identifier strings and other domain strings*, parsed and rendered
+by PG artifacts.
+
+The parsanol grammar is the "serialization from string" input path of
+lutaml-model. The grammar never bypasses the model layer: a parse fills
+information-model attributes through declared bindings (PN 1), and all
+(deserialization) flows through lutaml-model's own mapping machinery.
+
+== Architecture
+
+[cols="1,2"]
+|===
+| Concern | Home
+
+| capture → attribute maps, type casts, preprocessing steps
+| the artifact (PN 2)
+
+| render and derive specifications (string output)
+| the artifact (reserved `render:` / `derive:` sections)
+
+| structured parse errors
+| the artifact contract; mapped to lutaml-model `error_types`
+
+| field types, cardinalities, nil policies, defaults, enum payloads
+| the lutaml-model class (authored in LML)
+
+| format registration
+| the compiled model, through `Lutaml::Model::FormatRegistry`
+|===
+
+lutaml-model's `FormatRegistry.register` is the extension point: a
+grammar-backed string format is a *registration*, not a fork. The
+registry generates `from_<format>` on model classes, wires error types,
+and participates in the framework's format metadata — exactly as the
+built-in XML, JSON, and YAML formats do.
+
+== Registration
+
+[source,ruby]
+----
+Parsanol::PG::Lutaml.register(
+  IsoIdentifier,
+  format_name: :pubid_iso,
+  artifact: "artifacts/iso.json",
+  entry: "identifier",
+)
+----
+
+Registration SHALL:
+
+* load and verify the artifact (PN 2);
+* register the format through `Lutaml::Model::FormatRegistry` with the
+  artifact-backed adapter and transformer, and parsanol parse failures
+  as `error_types`;
+* define `Model.from_<format>(string)` as: native artifact parse →
+  binding application → model instantiation.
+
+== Parsing path
+
+The parse path is native-first: the artifact's grammar JSON is consumed
+by the Rust engine directly (PN 2). The full chain for
+`from_pubid_iso("ISO/CD 12345")` is:
+
+. artifact verification (once, at registration);
+. native parse of the input against the entry grammar;
+. parsanol-shape capture collection;
+. preprocessing steps (`table_lookup` against the artifact's tables);
+. type cast per binding;
+. path assignment into the model instance.
+
+Render (`to_<format>`) arrives with artifact render specifications and
+follows the same one-source rule in reverse.
+
+== Quality rules
+
+* All (de)serialization flows through lutaml-model mappings; hand-rolled
+  `to_h`/`from_h` bridges are prohibited.
+* No identifier-string surgery outside the artifact's declared
+  composition: model code operates on typed fields, never on raw
+  identifier text.
+* Native and Ruby parse paths are held to parity by specification
+  tests.
+
+== Reference application
+
+https://github.com/pubid/pubid-grammar[pubid-grammar] applies this
+specification end to end: language-independent grammars as PG sources,
+versioned artifacts, conformance corpora, and per-language binding specs
+for the pubid identifier families (Ruby, TypeScript, Rust).
