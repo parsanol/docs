@@ -6,6 +6,7 @@ metanorma:
       - sources/2/document.adoc
       - sources/3/document.adoc
       - sources/4/document.adoc
+      - sources/5/document.adoc
 
   collection:
     organization: "Parsanol"

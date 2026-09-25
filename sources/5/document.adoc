@@ -1,0 +1,84 @@
+= PN 5: PG testing and rule documentation
+:docnumber: 5
+:edition: 1
+:revdate: 2026-09-26
+:copyright-year: 2026
+:language: en
+:title: PG testing and rule documentation
+:doctype: standard
+:status: published
+:mn-document-class: ribose
+:mn-output-extensions: xml,html,pdf,rxl
+:local-cache-only:
+
+.Foreword
+This document is part of the Parsanol specifications series that defines
+the requirements for grammar authoring, artifact interchange, and model
+integration across the Parsanol parsing stack.
+
+== Introduction
+
+A grammar is a normative artifact: its acceptance boundary and the
+meaning of its captures deserve the same in-repo treatment as code. PG
+therefore carries two authoring facilities in the source file itself:
+
+* *doc comments* — prose attached to a rule, explaining what it parses;
+* *test sections* — executable expectations about what the grammar
+  accepts, rejects, and captures.
+
+Both compile into the artifact (PN 2), travel under the same checksum,
+and are re-runnable by every consumer.
+
+== Doc comments
+
+A comment whose marker is doubled (`##`) is a *doc comment*. Doc
+comment lines immediately preceding a rule attach to that rule. Plain
+`#` comments remain ordinary comments.
+
+```
+## The publisher is the leading organization token. Copublishers
+## follow after a slash, each captured as :copublisher.
+publisher = ("ISO" / "IEC") as publisher
+```
+
+The compiled envelope carries the rule documentation in its `docs`
+section; `Artifact#rule_docs` exposes it. Grammar documentation thus
+lives where the rule lives and cannot drift into a separate file.
+
+== Test sections
+
+A `test` section declares executable expectations. Multiple sections
+are allowed; each may name an entry, and with a single entry the name
+is optional.
+
+```
+test {
+  accept "ISO 8601-1:2019"
+  reject "nonsense"
+  example "ISO/IEC WD TS 25025" { publisher: "ISO" }
+}
+```
+
+* `accept <string>` — the input MUST parse.
+* `reject <string>` — the input MUST fail to parse.
+* `example <string> { key: value ... }` — the input MUST parse, and the
+  bound result MUST contain each named pair (a subset match; values are
+  strings, integers, or booleans).
+
+Tests run *at compile time*: the build fails on the first failing
+expectation, exactly like the lint of PN 1. They are embedded in the
+artifact's `tests` section and re-runnable from the artifact
+(`Artifact#run_tests`), so a consumer's CI verifies the grammar's
+declared behaviour without any additional test scaffolding.
+
+== Authoring ergonomics
+
+* `entry`, `bindings`, `preprocess`, and `test` sections may be
+  authored inside the `grammar` block, next to the rules they describe.
+* `version` is not a reserved word: rules may be named `version`
+  (the version header is positional).
+
+== Relationship to other specifications
+
+* Source language: PN 1. Artifact envelope: PN 2. The `tests` and
+  `docs` sections extend that envelope under the same checksum.

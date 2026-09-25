@@ -21,6 +21,7 @@ PN 1:: PG — The Parsanol grammar language
 PN 2:: The PG artifact format
 PN 3:: PG foreign-grammar import (ABNF, ISO EBNF, pest)
 PN 4:: PG integration with lutaml-model
+PN 5:: PG testing and rule documentation
 
 == Document structure
 
@@ -31,6 +32,7 @@ format.
 `2.adoc`::: The PG artifact format
 `3.adoc`::: Foreign-grammar import
 `4.adoc`::: lutaml-model integration
+`5.adoc`::: PG testing and rule documentation
 
 `_site/`:: generated documentation in multiple formats (HTML, PDF, XML).
 
