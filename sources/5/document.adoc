@@ -82,3 +82,74 @@ declared behaviour without any additional test scaffolding.
 
 * Source language: PN 1. Artifact envelope: PN 2. The `tests` and
   `docs` sections extend that envelope under the same checksum.
+
+== External test suites
+
+Inline tests keep expectations next to the rules; larger corpora live in
+`*.pgtest` suite files:
+
+```
+suite smoke for entry identifier {
+  accept "ISO 8601-1:2019"
+  reject "ISO/"
+  example "ISO/IEC WD TS 25025" { publisher: "ISO" }
+}
+```
+
+Suites run against the grammar or artifact with
+`parsanol pg test <file> --suite <dir>` and drive the iterative
+development loop: change the grammar, run the suite, repeat.
+
+== The development flow
+
+The workflow has three stages with a deterministic contract in the
+middle:
+
+. *Binding requirements.* Tests (inline and in suites) state, for
+concrete inputs, which captures with which types the grammar MUST
+produce. They are deterministic by construction.
+
+. *Grammar iteration.* The grammar author works red-green against those
+requirements with the tooling:
+`parsanol pg test grammar.pg --suite suites/`,
+`parsanol pg parse grammar.pg "input"`,
+`parsanol pg repl grammar.pg` — no language binding required.
+
+. *Language-specific data models.* A second programmer implements
+classes against the binding-requirements schema
+(`parsanol pg schema grammar.pg` — fields, types, cardinalities,
+preprocessing, and observed example captures). Conformance is: the
+model materializes the schema, the grammar fills it, the tests prove
+both.
+
+Non-deterministic special-casing — rules that are not simple data
+transformations — is deliberately NOT expressible in PG or its
+bindings: such logic belongs at the language-specific data-model
+ingestion end, operating on typed fields, never on raw identifier text.
+
+== Tooling
+
+`exe/parsanol pg` (parsanol-ruby) provides:
+
+[cols="1,2"]
+|===
+| Command | Purpose
+
+| `compile <file.pg> [-o out.json]`
+| compile to an artifact envelope
+
+| `test <file> [--suite dir]`
+| run inline tests and external suites
+
+| `schema <file>`
+| print the binding-requirements schema
+
+| `parse <file> [--entry E] INPUT`
+| parse one input; tree + bound captures
+
+| `repl <file> [--entry E]`
+| interactive parse loop
+
+| `doc <file> [rule]`
+| print rule documentation
+|===
